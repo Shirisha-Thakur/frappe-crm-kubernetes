@@ -31,6 +31,24 @@ RUN --mount=type=secret,id=apps_json,target=/opt/frappe/apps.json,uid=1000,gid=0
   find apps -mindepth 1 -path "*/.git" | xargs rm -fr && \
   chmod -R g=u /home/frappe/frappe-bench
 
+# Disable SSL for MariaDB client commands because the MariaDB server
+# in this local Kubernetes setup does not have SSL enabled.
+RUN python - <<'PY'
+from pathlib import Path
+
+path = Path("/home/frappe/frappe-bench/apps/frappe/frappe/database/__init__.py")
+content = path.read_text()
+
+old = 'command = [f"--user={user}"]'
+new = 'command = [f"--user={user}", "--skip-ssl"]'
+
+if content.count(old) != 1:
+    raise SystemExit("Expected MariaDB command not found exactly once. Build stopped.")
+
+path.write_text(content.replace(old, new, 1))
+print("Successfully patched Frappe MariaDB client command.")
+PY
+
 FROM ${FRAPPE_IMAGE_PREFIX}/base:${FRAPPE_BRANCH} AS backend
 
 USER frappe
